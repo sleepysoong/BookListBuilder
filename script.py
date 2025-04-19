@@ -63,10 +63,6 @@ ALADIN_URL_TEMPLATE = (
     "bestSellerRank,ratingInfo,reviewList"
 )
 
-LIBRARY_URL_TEMPLATE = (
-    "https://read365.edunet.net/alpasq/api/detail/info/isbn"
-    "?isbn={isbn}&provCode={prov_code}&neisCode={neis_code}"
-)
 
 class LibraryBookStatus(Enum):
     EXISTS = auto()
@@ -90,6 +86,8 @@ class Book:
     cover: BytesIO = None
     library_status: LibraryBookStatus = LibraryBookStatus.UNKNOWN
     memo: str = ''
+    book_key: int = None
+    species_key: int = None
 
 class Column:
     def __init__(self, header, getter, fmt_key):
@@ -126,40 +124,44 @@ COLUMNS = [
 ]
 
 def check_library(isbn: str, session: requests.Session, timeout: int = 10) -> LibraryBookStatus:
-    url = LIBRARY_URL_TEMPLATE.format(isbn=isbn, prov_code=PROV_CODE, neis_code=NEIS_CODE)
+    url = "https://read365.edunet.net/alpasq/api/search"
+
+    payload = {
+        "searchKeyword": isbn,
+        "neisCode": [NEIS_CODE],
+        "provCode": PROV_CODE,
+        "coverYn": "N"
+    }
+
+    headers = {"Content-Type": "application/json"}
 
     try:
-        response = session.get(url, timeout=timeout)
+        response = session.post(url, json=payload, headers=headers, timeout=timeout)
         response.raise_for_status()
 
-        try:
-            data = response.json()
+        data = response.json()
 
-        except json.JSONDecodeError:
-            print(f"> [조회 실패][도서관] ISBN {isbn}: 응답이 유효한 JSON 형식이 아니에요.")
-            return LibraryBookStatus.UNKNOWN
-        
-        if (data.get("status") == "OK" and
-            data.get("message") == "SUCCESS" and
-            data.get("data") and
-            data["data"].get("title")):
-            print(f"> [조회 성공][도서관] ISBN {isbn}: 소장하고 있는 도서에요.")
-            return LibraryBookStatus.EXISTS
-        else:
-            print(f"> [조회 성공][도서관] ISBN {isbn}: 소장하고 있지 않은 도서에요.")
-            return LibraryBookStatus.NOT_EXISTS
-        
+        results = data.get("data", {}).get("bookList", [])
+
+        for book in results:
+            if book.get("isbn") == isbn:
+                print(f"> [조회 성공][도서관] ISBN {isbn}: 소장하고 있는 도서에요 ㅡ bookKey: {book.get('bookKey')}, speciesKey: {book.get('speciesKey')}")
+                return LibraryBookStatus.EXISTS, book.get('bookKey'), book.get('speciesKey')
+            
+        print(f"> [조회 성공][도서관] ISBN {isbn}: 소장하고 있지 않은 도서에요.")
+        return LibraryBookStatus.NOT_EXISTS, None, None
+    
     except requests.exceptions.HTTPError as http_err:
         print(f"> [조회 실패][도서관] ISBN {isbn}: HTTP 오류가 발생했어요 - {http_err.response.status_code} {http_err.response.reason}")
-        return LibraryBookStatus.UNKNOWN
+        return LibraryBookStatus.UNKNOWN, None, None
     
     except requests.exceptions.RequestException as e:
         print(f"> [조회 실패][도서관] ISBN {isbn}: 네트워크 오류가 발생했어요 - {e}")
-        return LibraryBookStatus.UNKNOWN
+        return LibraryBookStatus.UNKNOWN, None, None
     
     except Exception as e:
         print(f"> [조회 실패][도서관] ISBN {isbn}: 예상치 못한 오류가 발생했어요 - {e}")
-        return LibraryBookStatus.UNKNOWN
+        return LibraryBookStatus.UNKNOWN, None, None
 
 def fetch(isbn: str, aladin_api_key: str, session: requests.Session, timeout: int = 5, memo: str = '', sheet_name: str = '') -> Optional[Book]:
     url = ALADIN_URL_TEMPLATE.format(api_key=ALADIN_API_KEY, isbn=isbn)
@@ -224,7 +226,7 @@ def fetch(isbn: str, aladin_api_key: str, session: requests.Session, timeout: in
          return None
     
     if book:
-        book.library_status = check_library(isbn, session)
+        book.library_status, book.book_key, book.species_key = check_library(isbn, session)
         
     return book
 
