@@ -16,53 +16,6 @@ import yaml
 
 VERSION = "1.0.2"
 
-if not os.path.exists("config.yml"):
-    with open("config.yml", "w", encoding="utf-8") as f:
-        yaml.dump({
-            "aladinKey": "write here",
-            "libraryLink": "write here",
-            "outputFileName": "output.xlsx"
-        }, f, allow_unicode=True)
-
-    print(f"config.yml 파일이 존재하지 않아 기본 템플릿을 생성했어요. 값을 채워넣고 다시 실행해주세요.")
-    sys.exit(1)
-
-with open("config.yml", encoding="utf-8") as f:
-    config = yaml.safe_load(f)
-    required_keys = ["aladinKey", "libraryLink", "outputFileName"]
-    for k in required_keys:
-        if k not in config or not config[k]:
-            print(f"콘피그 파일에 '{k}' 값이 비어 있어요.")
-            sys.exit(1)
-
-
-query_params = parse_qs(urlparse(config["libraryLink"]).query)
-
-SCHOOL_NAME = query_params.get('schoolName', [None])[0]
-PROV_CODE = query_params.get('provCode', [None])[0]
-NEIS_CODE = query_params.get('neisCode', [None])[0]
-
-if SCHOOL_NAME is None or PROV_CODE is None or NEIS_CODE is None:
-    print("올바르지 않은 도서관 링크가 제공되었어요. 프로그램의 설명을 참고하여 올바른 링크를 입력해주세요.")
-    sys.exit(1)
-
-print(f"@@@@@ 학교 정보를 로딩했어요: {SCHOOL_NAME} (교육청 코드: {PROV_CODE}, 나이스 코드: {NEIS_CODE})")
-
-ALADIN_API_KEY = config["aladinKey"]
-OUTPUT_XLSX_FILE = config["outputFileName"]
-
-DEFAULT_FONT_SIZE_PT = 11
-DESCRIPTION_WRAP_WIDTH = 25
-
-INPUT_XLSX_FILE = "list.xlsx"
-
-ALADIN_URL_TEMPLATE = (
-    "http://www.aladin.co.kr/ttb/api/ItemLookUp.aspx"
-    "?ttbkey={api_key}&itemIdType=ISBN&ItemId={isbn}"
-    "&output=js&Version=20131101&OptResult=Story,categoryIdList,"
-    "bestSellerRank,ratingInfo,reviewList"
-)
-
 
 class LibraryBookStatus(Enum):
     EXISTS = auto()
@@ -123,13 +76,13 @@ COLUMNS = [
     Column('메모', lambda b: b.memo, 'left'),
 ]
 
-def check_library(isbn: str, session: requests.Session, timeout: int = 10) -> LibraryBookStatus:
+def check_library(isbn: str, neis_code: str, prov_code: str, session: requests.Session, timeout: int = 10) -> LibraryBookStatus:
     url = "https://read365.edunet.net/alpasq/api/search"
 
     payload = {
         "searchKeyword": isbn,
-        "neisCode": [NEIS_CODE],
-        "provCode": PROV_CODE,
+        "neisCode": [neis_code],
+        "provCode": prov_code,
         "coverYn": "N"
     }
 
@@ -163,8 +116,17 @@ def check_library(isbn: str, session: requests.Session, timeout: int = 10) -> Li
         print(f"> [조회 실패][도서관] ISBN {isbn}: 예상치 못한 오류가 발생했어요 - {e}")
         return LibraryBookStatus.UNKNOWN, None, None
 
-def fetch(isbn: str, aladin_api_key: str, session: requests.Session, timeout: int = 5, memo: str = '', sheet_name: str = '') -> Optional[Book]:
-    url = ALADIN_URL_TEMPLATE.format(api_key=ALADIN_API_KEY, isbn=isbn)
+def fetch(
+    isbn: str,
+    aladin_api_key: str,
+    neis_code: str,
+    prov_code: str,
+    session: requests.Session,
+    timeout: int = 5,
+    memo: str = '',
+    sheet_name: str = ''
+) -> Optional[Book]:
+    url = "http://www.aladin.co.kr/ttb/api/ItemLookUp.aspx?ttbkey={api_key}&itemIdType=ISBN&ItemId={isbn}&output=js&Version=20131101&OptResult=Story,categoryIdList,bestSellerRank,ratingInfo,reviewList".format(api_key=ALADIN_API_KEY, isbn=isbn)
     book = None
 
     try:
@@ -226,7 +188,7 @@ def fetch(isbn: str, aladin_api_key: str, session: requests.Session, timeout: in
          return None
     
     if book:
-        book.library_status, book.book_key, book.species_key = check_library(isbn, session)
+        book.library_status, book.book_key, book.species_key = check_library(isbn, neis_code, prov_code, session)
         
     return book
 
@@ -259,13 +221,11 @@ def create(books: list[Book], output: str, font_size_pt: int):
     workbook = xlsxwriter.Workbook(output, {'default_date_format': 'yyyy-mm-dd'})
     fm = FormatManager(workbook, font_size_pt)
 
-    # 입력 순서대로 시트명 목록 생성
     sheet_sequence = []
     for book in books:
         if book.sheet_name not in sheet_sequence:
             sheet_sequence.append(book.sheet_name)
 
-    # 시트별로 작성
     for sheet_name in sheet_sequence:
         group_books = [book for book in books if book.sheet_name == sheet_name]
         worksheet = workbook.add_worksheet(sheet_name)
@@ -274,7 +234,6 @@ def create(books: list[Book], output: str, font_size_pt: int):
         col_widths = [img_col_width_char] + [0] * (len(COLUMNS) - 1)
         avg_char_w = font.getlength('A')
 
-        # 컬럼 너비 계산
         for idx, col in enumerate(COLUMNS):
             if idx == img_idx:
                 continue
@@ -289,12 +248,10 @@ def create(books: list[Book], output: str, font_size_pt: int):
                 col_widths[idx] = max(col_widths[idx], char_w)
             col_widths[idx] = min(col_widths[idx], 60)
 
-        # 헤더 작성
         for idx, width in enumerate(col_widths):
             worksheet.set_column(idx, idx, width)
             worksheet.write(0, idx, COLUMNS[idx].header, fm.get('header'))
 
-        # 행 높이 계산
         row_heights = [font_size_pt * 1.7]
         for book in group_books:
             max_h = font_size_pt * 1.7
@@ -310,7 +267,6 @@ def create(books: list[Book], output: str, font_size_pt: int):
         for r, h in enumerate(row_heights):
             worksheet.set_row(r, h)
 
-        # 데이터 작성
         for r, book in enumerate(group_books, start=1):
             for idx, col in enumerate(COLUMNS):
                 if idx == img_idx:
@@ -321,7 +277,6 @@ def create(books: list[Book], output: str, font_size_pt: int):
                 else:
                     worksheet.write(r, idx, val, fm.get(col.fmt_key or 'center'))
 
-        # 이미지 삽입
         for r, book in enumerate(group_books, start=1):
             if book.cover:
                 cell_w_px = col_to_px(col_widths[img_idx])
@@ -337,6 +292,44 @@ def create(books: list[Book], output: str, font_size_pt: int):
     print(f"@@@@@ 엑셀 파일({output})을 저장했어요.")
 
 if __name__ == "__main__":
+    if not os.path.exists("config.yml"):
+        with open("config.yml", "w", encoding="utf-8") as f:
+            yaml.dump({
+                "aladinKey": "write here",
+                "libraryLink": "write here",
+                "outputFileName": "output.xlsx"
+            }, f, allow_unicode=True)
+
+        print(f"config.yml 파일이 존재하지 않아 기본 템플릿을 생성했어요. 값을 채워넣고 다시 실행해주세요.")
+        sys.exit(1)
+
+    with open("config.yml", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+        required_keys = ["aladinKey", "libraryLink", "outputFileName"]
+        for k in required_keys:
+            if k not in config or not config[k]:
+                print(f"콘피그 파일에 '{k}' 값이 비어 있어요.")
+                sys.exit(1)
+
+    query_params = parse_qs(urlparse(config["libraryLink"]).query)
+
+    SCHOOL_NAME = query_params.get('schoolName', [None])[0]
+    PROV_CODE = query_params.get('provCode', [None])[0]
+    NEIS_CODE = query_params.get('neisCode', [None])[0]
+
+    if SCHOOL_NAME is None or PROV_CODE is None or NEIS_CODE is None:
+        print("올바르지 않은 도서관 링크가 제공되었어요. 프로그램의 설명을 참고하여 올바른 링크를 입력해주세요.")
+        sys.exit(1)
+
+    print(f"@@@@@ 학교 정보를 로딩했어요: {SCHOOL_NAME} (교육청 코드: {PROV_CODE}, 나이스 코드: {NEIS_CODE})")
+
+    ALADIN_API_KEY = config["aladinKey"]
+    OUTPUT_XLSX_FILE = config["outputFileName"]
+
+    DEFAULT_FONT_SIZE_PT = 11
+    DESCRIPTION_WRAP_WIDTH = 25
+
+    INPUT_XLSX_FILE = "list.xlsx"
     books_to_check = []
 
     if not os.path.exists(INPUT_XLSX_FILE):
@@ -378,7 +371,7 @@ if __name__ == "__main__":
     books = []
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures = [executor.submit(fetch, isbn, ALADIN_API_KEY, session, 5, memo, sheet_name)
+        futures = [executor.submit(fetch, isbn, ALADIN_API_KEY, NEIS_CODE, PROV_CODE, session, 5, memo, sheet_name)
                    for isbn, sheet_name, memo in books_to_check]
         for (isbn, sheet_name, memo), future in zip(books_to_check, futures):
             try:
