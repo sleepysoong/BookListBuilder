@@ -86,6 +86,7 @@ class Book:
     rating_score: float
     rating_count: int
     category: str
+    sheet_name: str
     cover: BytesIO = None
     library_status: LibraryBookStatus = LibraryBookStatus.UNKNOWN
     memo: str = ''
@@ -160,7 +161,7 @@ def check_library(isbn: str, session: requests.Session, timeout: int = 10) -> Li
         print(f"> [조회 실패][도서관] ISBN {isbn}: 예상치 못한 오류가 발생했어요 - {e}")
         return LibraryBookStatus.UNKNOWN
 
-def fetch(isbn: str, aladin_api_key: str, session: requests.Session, timeout: int = 5, memo: str = '') -> Optional[Book]:
+def fetch(isbn: str, aladin_api_key: str, session: requests.Session, timeout: int = 5, memo: str = '', sheet_name: str = '') -> Optional[Book]:
     url = ALADIN_URL_TEMPLATE.format(api_key=ALADIN_API_KEY, isbn=isbn)
     book = None
 
@@ -193,6 +194,7 @@ def fetch(isbn: str, aladin_api_key: str, session: requests.Session, timeout: in
             rating_score=score,
             rating_count=count,
             category=item.get("categoryName", ""),
+            sheet_name=sheet_name,
             memo=memo,
         )
 
@@ -252,83 +254,83 @@ def row_to_px(height):
 
 def create(books: list[Book], output: str, font_size_pt: int):
     font = ImageFont.load_default()
-
     workbook = xlsxwriter.Workbook(output, {'default_date_format': 'yyyy-mm-dd'})
-    worksheet = workbook.add_worksheet()
-
     fm = FormatManager(workbook, font_size_pt)
 
-    img_idx = 0
-    img_col_width_char = 16
-    col_widths = [img_col_width_char] + [0] * (len(COLUMNS) - 1)
-    avg_char_w = font.getlength('A')
-
-    for idx, col in enumerate(COLUMNS):
-        if idx == img_idx:
-            continue
-
-        header_w_px, _ = get_text_px(col.header, font)
-        char_w = header_w_px / avg_char_w + 0.1
-        col_widths[idx] = max(col_widths[idx], char_w)
-
-        for book in books:
-            val = col.getter(book)
-            text = f'{int(val):,}원' if col.fmt_key == 'price' else str(val or '')
-
-            w_px, _ = get_text_px(text, font)
-            char_w = w_px / avg_char_w + 0.1
-            col_widths[idx] = max(col_widths[idx], char_w)
-
-        col_widths[idx] = min(col_widths[idx], 60)
-
-    for idx, width in enumerate(col_widths):
-        worksheet.set_column(idx, idx, width)
-        worksheet.write(0, idx, COLUMNS[idx].header, fm.get('header'))
-
-    row_heights = [font_size_pt * 1.7]
-
+    # 입력 순서대로 시트명 목록 생성
+    sheet_sequence = []
     for book in books:
-        max_h = font_size_pt * 1.7
+        if book.sheet_name not in sheet_sequence:
+            sheet_sequence.append(book.sheet_name)
 
-        for idx, col in enumerate(COLUMNS):
-            if idx == img_idx:
-                cell_h = 112
-            else:
-                lines = (str(col.getter(book)) or '').count('\n') + 1
-                cell_h = lines * font_size_pt * 1.7
+    # 시트별로 작성
+    for sheet_name in sheet_sequence:
+        group_books = [book for book in books if book.sheet_name == sheet_name]
+        worksheet = workbook.add_worksheet(sheet_name)
+        img_idx = 0
+        img_col_width_char = 16
+        col_widths = [img_col_width_char] + [0] * (len(COLUMNS) - 1)
+        avg_char_w = font.getlength('A')
 
-            max_h = max(max_h, cell_h)
-
-        row_heights.append(max_h)
-
-    for r, h in enumerate(row_heights):
-        worksheet.set_row(r, h)
-
-    for r, book in enumerate(books, start=1):
+        # 컬럼 너비 계산
         for idx, col in enumerate(COLUMNS):
             if idx == img_idx:
                 continue
+            header_w_px, _ = get_text_px(col.header, font)
+            char_w = header_w_px / avg_char_w + 0.1
+            col_widths[idx] = max(col_widths[idx], char_w)
+            for book in group_books:
+                val = col.getter(book)
+                text = f'{int(val):,}원' if col.fmt_key == 'price' else str(val or '')
+                w_px, _ = get_text_px(text, font)
+                char_w = w_px / avg_char_w + 0.1
+                col_widths[idx] = max(col_widths[idx], char_w)
+            col_widths[idx] = min(col_widths[idx], 60)
 
-            val = col.getter(book)
-            
-            if col.fmt_key == 'price':
-                worksheet.write_number(r, idx, val, fm.get('price'))
-            else:
-                worksheet.write(r, idx, val, fm.get(col.fmt_key or 'center'))
+        # 헤더 작성
+        for idx, width in enumerate(col_widths):
+            worksheet.set_column(idx, idx, width)
+            worksheet.write(0, idx, COLUMNS[idx].header, fm.get('header'))
 
-    for r, book in enumerate(books, start=1):
-        if book.cover:
-            cell_w_px = col_to_px(col_widths[img_idx])
-            cell_h_px = row_to_px(row_heights[r])
+        # 행 높이 계산
+        row_heights = [font_size_pt * 1.7]
+        for book in group_books:
+            max_h = font_size_pt * 1.7
+            for idx, col in enumerate(COLUMNS):
+                if idx == img_idx:
+                    cell_h = 112
+                else:
+                    lines = (str(col.getter(book)) or '').count('\n') + 1
+                    cell_h = lines * font_size_pt * 1.7
+                max_h = max(max_h, cell_h)
+            row_heights.append(max_h)
 
-            im = Image.open(book.cover)
-            buf = BytesIO()
+        for r, h in enumerate(row_heights):
+            worksheet.set_row(r, h)
 
-            im_resized = im.resize((cell_w_px, cell_h_px), Image.Resampling.LANCZOS)
-            im_resized.save(buf, format='PNG')
-            buf.seek(0)
-            worksheet.insert_image(r, img_idx, f'{book.isbn13}.png', {'image_data': buf, 'x_offset': 0, 'y_offset': 0, 'positioning': 1})
-    
+        # 데이터 작성
+        for r, book in enumerate(group_books, start=1):
+            for idx, col in enumerate(COLUMNS):
+                if idx == img_idx:
+                    continue
+                val = col.getter(book)
+                if col.fmt_key == 'price':
+                    worksheet.write_number(r, idx, val, fm.get('price'))
+                else:
+                    worksheet.write(r, idx, val, fm.get(col.fmt_key or 'center'))
+
+        # 이미지 삽입
+        for r, book in enumerate(group_books, start=1):
+            if book.cover:
+                cell_w_px = col_to_px(col_widths[img_idx])
+                cell_h_px = row_to_px(row_heights[r])
+                im = Image.open(book.cover)
+                buf = BytesIO()
+                im_resized = im.resize((cell_w_px, cell_h_px), Image.Resampling.LANCZOS)
+                im_resized.save(buf, format='PNG')
+                buf.seek(0)
+                worksheet.insert_image(r, img_idx, f"{book.isbn13}.png", {'image_data': buf, 'x_offset': 0, 'y_offset': 0, 'positioning': 1})
+
     workbook.close()
     print(f"@@@@@ 엑셀 파일({output})을 저장했어요.")
 
@@ -339,27 +341,33 @@ if __name__ == "__main__":
         workbook = openpyxl.Workbook()
         sheet = workbook.active
         sheet['A1'] = 'ISBN13'
-        sheet['B1'] = '메모 (선택)'
+        sheet['B1'] = '시트'
+        sheet['C1'] = '메모 (선택)'
 
         workbook.save(INPUT_XLSX_FILE)
 
-        print(f"'{INPUT_XLSX_FILE}' 파일이 존재하지 않아 생성했어요. A열에 ISBN, B열에 메모를 입력해주세요.")
+        print(f"'{INPUT_XLSX_FILE}' 파일이 존재하지 않아 생성했어요. A열에 ISBN13, B열에 시트, C열에 메모를 입력해주세요.")
         sys.exit(1)
 
     try:
         workbook = openpyxl.load_workbook(INPUT_XLSX_FILE, data_only=True)
         sheet = workbook.active
 
-        for row in sheet.iter_rows(min_row=2, max_col=2):
+        for row in sheet.iter_rows(min_row=2, max_col=3):
             isbn_cell = row[0]
-            memo_cell = row[1] if len(row) > 1 else None
+            sheet_cell = row[1] if len(row) > 1 else None
+            memo_cell = row[2] if len(row) > 2 else None
 
             if isbn_cell.value:
                 isbn = str(isbn_cell.value).strip()
+                sheet_name = str(sheet_cell.value).strip() if sheet_cell and sheet_cell.value else ''
                 memo = str(memo_cell.value).strip() if memo_cell and memo_cell.value else ''
 
-                if isbn:
-                    books_to_check.append((isbn, memo))
+                if not sheet_name:
+                    print(f"'{isbn}' 책이 시트가 지정되지 않았어요.")
+                    sys.exit(1)
+
+                books_to_check.append((isbn, sheet_name, memo))
     except Exception as e:
         print(f"@@@@@ '{INPUT_XLSX_FILE}' 파일을 읽는 중 오류가 발생했어요: {e}")
         sys.exit(1)
@@ -368,15 +376,13 @@ if __name__ == "__main__":
     books = []
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_isbn = {executor.submit(fetch, isbn, ALADIN_API_KEY, session, 5, memo): isbn for isbn, memo in books_to_check}
-        for future in concurrent.futures.as_completed(future_to_isbn):
-            isbn = future_to_isbn[future]
-
+        futures = [executor.submit(fetch, isbn, ALADIN_API_KEY, session, 5, memo, sheet_name)
+                   for isbn, sheet_name, memo in books_to_check]
+        for (isbn, sheet_name, memo), future in zip(books_to_check, futures):
             try:
                 result = future.result()
                 if result:
                     books.append(result)
-
             except Exception as exc:
                 print(f"ISBN {isbn} 처리 중 예외가 발생했어요: {exc}")
 
