@@ -39,7 +39,7 @@ class Book:
     cover: BytesIO = None
     library_status: LibraryBookStatus = LibraryBookStatus.UNKNOWN
     memo: str = ''
-    book_key: int = None
+    key: int = None
     species_key: int = None
 
 class Column:
@@ -188,7 +188,7 @@ def fetch(
          return None
     
     if book:
-        book.library_status, book.book_key, book.species_key = check_library(isbn, neis_code, prov_code, session)
+        book.library_status, book.key, book.species_key = check_library(isbn, neis_code, prov_code, session)
         
     return book
 
@@ -330,6 +330,7 @@ if __name__ == "__main__":
     DESCRIPTION_WRAP_WIDTH = 25
 
     INPUT_XLSX_FILE = "list.xlsx"
+
     books_to_check = []
 
     if not os.path.exists(INPUT_XLSX_FILE):
@@ -363,6 +364,7 @@ if __name__ == "__main__":
                     sys.exit(1)
 
                 books_to_check.append((isbn, sheet_name, memo))
+
     except Exception as e:
         print(f"@@@@@ '{INPUT_XLSX_FILE}' 파일을 읽는 중 오류가 발생했어요: {e}")
         sys.exit(1)
