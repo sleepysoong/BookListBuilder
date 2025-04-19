@@ -14,7 +14,7 @@ from enum import Enum, auto
 from urllib.parse import urlparse, parse_qs
 import yaml
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 
 if not os.path.exists("config.yml"):
     with open("config.yml", "w", encoding="utf-8") as f:
