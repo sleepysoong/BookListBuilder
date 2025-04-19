@@ -9,12 +9,12 @@ from io import BytesIO
 from dataclasses import dataclass, field
 from PIL import Image, ImageFont
 import json
-from typing import Optional
+from typing import Optional, List, Tuple, Dict, Any, Callable
 from enum import Enum, auto
 from urllib.parse import urlparse, parse_qs
 import yaml
 
-VERSION = "1.0.2"
+VERSION: str = "1.0.2"
 
 
 class LibraryBookStatus(Enum):
@@ -24,44 +24,45 @@ class LibraryBookStatus(Enum):
 
 @dataclass
 class Book:
-    title: str
-    link: str
-    author: str
-    publisher: str
-    isbn13: str
-    standard_price: int
-    publish_date: str
-    description: str
-    rating_score: float
-    rating_count: int
-    category: str
-    sheet_name: str
-    cover: BytesIO = None
+    title: str = ''
+    link: str = ''
+    author: str = ''
+    publisher: str = ''
+    isbn13: str = ''
+    standard_price: int = 0
+    publish_date: str = ''
+    description: str = ''
+    rating_score: float = 0.0
+    rating_count: int = 0
+    category: str = ''
+    sheet_name: str = ''
+    cover: Optional[BytesIO] = None
     library_status: LibraryBookStatus = LibraryBookStatus.UNKNOWN
     memo: str = ''
-    key: int = None
-    species_key: int = None
+    key: Optional[int] = None
+    species_key: Optional[int] = None
+    order: int = 0
 
 class Column:
-    def __init__(self, header, getter, fmt_key):
-        self.header = header
-        self.getter = getter
-        self.fmt_key = fmt_key
+    def __init__(self, header: str, getter: Callable[[Book], Any], fmt_key: Optional[str]):
+        self.header: str = header
+        self.getter: Callable[[Book], Any] = getter
+        self.fmt_key: Optional[str] = fmt_key
 
 class FormatManager:
-    def __init__(self, workbook, font_size_pt):
-        base_args = {'font_size': font_size_pt, 'text_wrap': True}
-        self.fmts = {
+    def __init__(self, workbook: xlsxwriter.Workbook, font_size_pt: int):
+        base_args: Dict[str, Any] = {'font_size': font_size_pt, 'text_wrap': True}
+        self.fmts: Dict[str, xlsxwriter.format] = {
             'header': workbook.add_format({**base_args, 'bold': True, 'bg_color': '#D3D3D3', 'align': 'center', 'valign': 'vcenter'}),
             'center': workbook.add_format({**base_args, 'align': 'center', 'valign': 'vcenter'}),
             'left': workbook.add_format({**base_args, 'align': 'left', 'valign': 'vcenter'}),
             'price': workbook.add_format({**base_args, 'num_format': '#,##0"원"', 'align': 'center', 'valign': 'vcenter'}),
         }
 
-    def get(self, key):
+    def get(self, key: str) -> Optional[xlsxwriter.format]:
         return self.fmts.get(key)
     
-COLUMNS = [
+COLUMNS: List[Column] = [
     Column('', lambda b: b.cover, None),
     Column('도서', lambda b: b.title, 'center'),
     Column('저자', lambda b: b.author, 'center'),
@@ -76,132 +77,120 @@ COLUMNS = [
     Column('메모', lambda b: b.memo, 'left'),
 ]
 
-def check_library(isbn: str, neis_code: str, prov_code: str, session: requests.Session, timeout: int = 10) -> LibraryBookStatus:
-    url = "https://read365.edunet.net/alpasq/api/search"
+def update_library_status(book: Book, neis_code: str, prov_code: str, session: requests.Session, timeout: int = 10) -> None:
+    url: str = "https://read365.edunet.net/alpasq/api/search"
 
-    payload = {
-        "searchKeyword": isbn,
+    payload: Dict[str, Any] = {
+        "searchKeyword": book.isbn13,
         "neisCode": [neis_code],
         "provCode": prov_code,
         "coverYn": "N"
     }
 
-    headers = {"Content-Type": "application/json"}
+    headers: Dict[str, str] = {"Content-Type": "application/json"}
 
     try:
-        response = session.post(url, json=payload, headers=headers, timeout=timeout)
+        response: requests.Response = session.post(url, json=payload, headers=headers, timeout=timeout)
         response.raise_for_status()
 
-        data = response.json()
+        data: Dict[str, Any] = response.json()
 
-        results = data.get("data", {}).get("bookList", [])
+        results: List[Dict[str, Any]] = data.get("data", {}).get("bookList", [])
 
-        for book in results:
-            if book.get("isbn") == isbn:
-                print(f"> [조회 성공][도서관] ISBN {isbn}: 소장하고 있는 도서에요 ㅡ bookKey: {book.get('bookKey')}, speciesKey: {book.get('speciesKey')}")
-                return LibraryBookStatus.EXISTS, book.get('bookKey'), book.get('speciesKey')
+        for item in results:
+            if item.get("isbn") == book.isbn13:
+                book.library_status = LibraryBookStatus.EXISTS
+                book.key = item.get('bookKey')
+                book.species_key = item.get('speciesKey')
+                print(f"> [조회 성공][도서관] ISBN {book.isbn13}: 소장하고 있는 도서에요 ㅡ bookKey: {book.key}, speciesKey: {book.species_key}")
+                return
             
-        print(f"> [조회 성공][도서관] ISBN {isbn}: 소장하고 있지 않은 도서에요.")
-        return LibraryBookStatus.NOT_EXISTS, None, None
+        book.library_status = LibraryBookStatus.NOT_EXISTS
+        print(f"> [조회 성공][도서관] ISBN {book.isbn13}: 소장하고 있지 않은 도서에요.")
+        return
     
     except requests.exceptions.HTTPError as http_err:
-        print(f"> [조회 실패][도서관] ISBN {isbn}: HTTP 오류가 발생했어요 - {http_err.response.status_code} {http_err.response.reason}")
-        return LibraryBookStatus.UNKNOWN, None, None
+        print(f"> [조회 실패][도서관] ISBN {book.isbn13}: HTTP 오류가 발생했어요 - {http_err.response.status_code} {http_err.response.reason}")
+        book.library_status = LibraryBookStatus.UNKNOWN
+        return
     
     except requests.exceptions.RequestException as e:
-        print(f"> [조회 실패][도서관] ISBN {isbn}: 네트워크 오류가 발생했어요 - {e}")
-        return LibraryBookStatus.UNKNOWN, None, None
+        print(f"> [조회 실패][도서관] ISBN {book.isbn13}: 네트워크 오류가 발생했어요 - {e}")
+        book.library_status = LibraryBookStatus.UNKNOWN
+        return
     
     except Exception as e:
-        print(f"> [조회 실패][도서관] ISBN {isbn}: 예상치 못한 오류가 발생했어요 - {e}")
-        return LibraryBookStatus.UNKNOWN, None, None
+        print(f"> [조회 실패][도서관] ISBN {book.isbn13}: 예상치 못한 오류가 발생했어요 - {e}")
+        book.library_status = LibraryBookStatus.UNKNOWN
+        return
 
-def fetch(
-    isbn: str,
-    aladin_api_key: str,
-    neis_code: str,
-    prov_code: str,
-    session: requests.Session,
-    timeout: int = 5,
-    memo: str = '',
-    sheet_name: str = ''
-) -> Optional[Book]:
-    url = "http://www.aladin.co.kr/ttb/api/ItemLookUp.aspx?ttbkey={api_key}&itemIdType=ISBN&ItemId={isbn}&output=js&Version=20131101&OptResult=Story,categoryIdList,bestSellerRank,ratingInfo,reviewList".format(api_key=ALADIN_API_KEY, isbn=isbn)
-    book = None
+def update_book_info(book: Book, aladin_api_key: str, session: requests.Session, timeout: int = 5) -> None:
+    url: str = "http://www.aladin.co.kr/ttb/api/ItemLookUp.aspx?ttbkey={api_key}&itemIdType=ISBN&ItemId={isbn}&output=js&Version=20131101&OptResult=Story,categoryIdList,bestSellerRank,ratingInfo,reviewList".format(api_key=aladin_api_key, isbn=book.isbn13)
 
     try:
-        resp = session.get(url, timeout=timeout)
+        resp: requests.Response = session.get(url, timeout=timeout)
         resp.raise_for_status()
 
-        items = resp.json().get("item", [])
+        items: List[Dict[str, Any]] = resp.json().get("item", [])
 
         if not items:
-            print(f"> [조회 실패][알라딘] ISBN {isbn}: 데이터를 찾을 수 없어요.")
-            return None
+            print(f"> [조회 실패][알라딘] ISBN {book.isbn13}: 데이터를 찾을 수 없어요.")
+            return
         
-        item = items[0]
+        item: Dict[str, Any] = items[0]
 
-        desc = item.get("description", "").strip()
-        rating_info = item.get("subInfo", {}).get("ratingInfo", {})
-        score = float(rating_info.get("ratingScore", 0))
-        count = int(rating_info.get("ratingCount", 0))
+        desc: str = item.get("description", "").strip()
+        rating_info: Dict[str, Any] = item.get("subInfo", {}).get("ratingInfo", {})
+        score: float = float(rating_info.get("ratingScore", 0))
+        count: int = int(rating_info.get("ratingCount", 0))
 
-        book = Book(
-            title=item.get("title", ""),
-            link=item.get("link", ""),
-            author=item.get("author", ""),
-            publisher=item.get("publisher", ""),
-            isbn13=item.get("isbn13", ""),
-            standard_price=int(item.get("priceStandard", 0)),
-            publish_date=item.get("pubDate", ""),
-            description=desc,
-            rating_score=score,
-            rating_count=count,
-            category=item.get("categoryName", ""),
-            sheet_name=sheet_name,
-            memo=memo,
-        )
+        book.title = item.get("title", "")
+        book.link = item.get("link", "")
+        book.author = item.get("author", "")
+        book.publisher = item.get("publisher", "")
+        book.isbn13 = item.get("isbn13", "")
+        book.standard_price = int(item.get("priceStandard", 0))
+        book.publish_date = item.get("pubDate", "")
+        book.description = desc
+        book.rating_score = score
+        book.rating_count = count
+        book.category = item.get("categoryName", "")
 
-        print(f"> [조회 성공][알라딘] ISBN {isbn}: '{book.title}' 정보를 가져왔어요.")
+        print(f"> [조회 성공][알라딘] ISBN {book.isbn13}: '{book.title}' 정보를 가져왔어요.")
 
         if cover_url := item.get("cover"):
             try:
-                cover_resp = session.get(cover_url, timeout=timeout)
+                cover_resp: requests.Response = session.get(cover_url, timeout=timeout)
                 cover_resp.raise_for_status()
 
                 book.cover = BytesIO(cover_resp.content)
 
             except requests.exceptions.RequestException as e:
-                print(f"> [오류][알라딘] ISBN {isbn} 커버 이미지를 가져오는 중 오류가 발생했어요: {e}")
-                book.cover_data = None
+                print(f"> [오류][알라딘] ISBN {book.isbn13} 커버 이미지를 가져오는 중 오류가 발생했어요: {e}")
+                book.cover = None
 
     except requests.exceptions.RequestException as e:
-        print(f"> [조회 실패][알라딘] ISBN {isbn}: 정보 가져오는 중 오류가 발생했어요 - {e}")
-        return None
+        print(f"> [조회 실패][알라딘] ISBN {book.isbn13}: 정보 가져오는 중 오류가 발생했어요 - {e}")
+        return
     
     except json.JSONDecodeError:
-        print(f"> [조회 실패][알라딘] ISBN {isbn}: 응답이 유효한 JSON 형식이 아니에요.")
-        return None
+        print(f"> [조회 실패][알라딘] ISBN {book.isbn13}: 응답이 유효한 JSON 형식이 아니에요.")
+        return
     
     except Exception as e:
-         print(f"> [조회 실패][알라딘] ISBN {isbn}: 정보 처리 중 예상치 못한 오류가 발생했어요 - {e}")
-         return None
-    
-    if book:
-        book.library_status, book.key, book.species_key = check_library(isbn, neis_code, prov_code, session)
-        
-    return book
+         print(f"> [조회 실패][알라딘] ISBN {book.isbn13}: 정보 처리 중 예상치 못한 오류가 발생했어요 - {e}")
+         return
 
-def get_text_px(text: str, font: ImageFont.FreeTypeFont) -> tuple[int, int]:
-    char_width_avg = font.getlength('A')
-    char_height = font.size
+def get_text_px(text: str, font: ImageFont.FreeTypeFont) -> Tuple[int, int]:
+    char_width_avg: float = font.getlength('A')
+    char_height: int = font.size
 
-    max_width = 0
+    max_width: int = 0
 
-    lines = text.split('\n')
+    lines: List[str] = text.split('\n')
 
     for line in lines:
-        line_width = 0
+        line_width: float = 0
 
         for char in line:
             line_width += char_width_avg * 2 if ord(char) > 127 else char_width_avg
@@ -210,58 +199,92 @@ def get_text_px(text: str, font: ImageFont.FreeTypeFont) -> tuple[int, int]:
 
     return int(max_width), int(len(lines) * char_height * 1.2)
 
-def col_to_px(width):
+def col_to_px(width: float) -> int:
     return int(width * 7 + 5)
 
-def row_to_px(height):
+def row_to_px(height: float) -> int:
     return int(height * 96 / 72)
 
-def create(books: list[Book], output: str, font_size_pt: int):
-    font = ImageFont.load_default()
-    workbook = xlsxwriter.Workbook(output, {'default_date_format': 'yyyy-mm-dd'})
-    fm = FormatManager(workbook, font_size_pt)
+def create(
+        books: List[Book],
+        output: str,
+        font_size_pt: int,
+        aladin_api_key: Optional[str] = None,
+        neis_code: Optional[str] = None,
+        prov_code: Optional[str] = None
+    ) -> None:
+    font: ImageFont.ImageFont = ImageFont.load_default()
+    workbook: xlsxwriter.Workbook = xlsxwriter.Workbook(output, {'default_date_format': 'yyyy-mm-dd'})
+    fm: FormatManager = FormatManager(workbook, font_size_pt)
+    session: requests.Session = requests.Session()
 
-    sheet_sequence = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures: List[concurrent.futures.Future] = []
+
+        for book in books:
+            futures.extend([
+                executor.submit(update_book_info, book, aladin_api_key, session),
+                executor.submit(update_library_status, book, neis_code, prov_code, session)
+            ])
+
+        concurrent.futures.wait(futures)
+
+    print(f"@@@@@ 총 {len(books)}권의 책 정보를 성공적으로 가져왔어요.")
+
+    sheet_sequence: List[str] = []
     for book in books:
         if book.sheet_name not in sheet_sequence:
             sheet_sequence.append(book.sheet_name)
 
     for sheet_name in sheet_sequence:
-        group_books = [book for book in books if book.sheet_name == sheet_name]
-        worksheet = workbook.add_worksheet(sheet_name)
-        img_idx = 0
-        img_col_width_char = 16
-        col_widths = [img_col_width_char] + [0] * (len(COLUMNS) - 1)
-        avg_char_w = font.getlength('A')
+        group_books: List[Book] = [book for book in books if book.sheet_name == sheet_name]
+        group_books.sort(key=lambda x: x.order)
+
+        worksheet: xlsxwriter.Worksheet = workbook.add_worksheet(sheet_name)
+
+        img_idx: int = 0
+        img_col_width_char: int = 16
+
+        col_widths: List[float] = [img_col_width_char] + [0] * (len(COLUMNS) - 1)
+        avg_char_w: float = font.getlength('A')
 
         for idx, col in enumerate(COLUMNS):
             if idx == img_idx:
                 continue
+
             header_w_px, _ = get_text_px(col.header, font)
-            char_w = header_w_px / avg_char_w + 0.1
+            char_w: float = header_w_px / avg_char_w + 0.1
             col_widths[idx] = max(col_widths[idx], char_w)
+
             for book in group_books:
-                val = col.getter(book)
-                text = f'{int(val):,}원' if col.fmt_key == 'price' else str(val or '')
+                val: Any = col.getter(book)
+                text: str = f'{int(val):,}원' if col.fmt_key == 'price' else str(val or '')
+
                 w_px, _ = get_text_px(text, font)
                 char_w = w_px / avg_char_w + 0.1
+
                 col_widths[idx] = max(col_widths[idx], char_w)
+
             col_widths[idx] = min(col_widths[idx], 60)
 
         for idx, width in enumerate(col_widths):
             worksheet.set_column(idx, idx, width)
             worksheet.write(0, idx, COLUMNS[idx].header, fm.get('header'))
 
-        row_heights = [font_size_pt * 1.7]
+        row_heights: List[float] = [font_size_pt * 1.7]
+
         for book in group_books:
-            max_h = font_size_pt * 1.7
+            max_h: float = font_size_pt * 1.7
+
             for idx, col in enumerate(COLUMNS):
                 if idx == img_idx:
-                    cell_h = 112
+                    cell_h: float = 112
                 else:
-                    lines = (str(col.getter(book)) or '').count('\n') + 1
+                    lines: int = (str(col.getter(book)) or '').count('\n') + 1
                     cell_h = lines * font_size_pt * 1.7
+
                 max_h = max(max_h, cell_h)
+
             row_heights.append(max_h)
 
         for r, h in enumerate(row_heights):
@@ -271,7 +294,9 @@ def create(books: list[Book], output: str, font_size_pt: int):
             for idx, col in enumerate(COLUMNS):
                 if idx == img_idx:
                     continue
-                val = col.getter(book)
+
+                val: Any = col.getter(book)
+
                 if col.fmt_key == 'price':
                     worksheet.write_number(r, idx, val, fm.get('price'))
                 else:
@@ -279,13 +304,17 @@ def create(books: list[Book], output: str, font_size_pt: int):
 
         for r, book in enumerate(group_books, start=1):
             if book.cover:
-                cell_w_px = col_to_px(col_widths[img_idx])
-                cell_h_px = row_to_px(row_heights[r])
-                im = Image.open(book.cover)
-                buf = BytesIO()
-                im_resized = im.resize((cell_w_px, cell_h_px), Image.Resampling.LANCZOS)
+                cell_w_px: int = col_to_px(col_widths[img_idx])
+                cell_h_px: int = row_to_px(row_heights[r])
+
+                im: Image.Image = Image.open(book.cover)
+                buf: BytesIO = BytesIO()
+
+                im_resized: Image.Image = im.resize((cell_w_px, cell_h_px), Image.Resampling.LANCZOS)
                 im_resized.save(buf, format='PNG')
+
                 buf.seek(0)
+
                 worksheet.insert_image(r, img_idx, f"{book.isbn13}.png", {'image_data': buf, 'x_offset': 0, 'y_offset': 0, 'positioning': 1})
 
     workbook.close()
@@ -304,18 +333,18 @@ if __name__ == "__main__":
         sys.exit(1)
 
     with open("config.yml", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
-        required_keys = ["aladinKey", "libraryLink", "outputFileName"]
+        config: Dict[str, Any] = yaml.safe_load(f)
+        required_keys: List[str] = ["aladinKey", "libraryLink", "outputFileName"]
         for k in required_keys:
             if k not in config or not config[k]:
                 print(f"콘피그 파일에 '{k}' 값이 비어 있어요.")
                 sys.exit(1)
 
-    query_params = parse_qs(urlparse(config["libraryLink"]).query)
+    query_params: Dict[str, List[str]] = parse_qs(urlparse(config["libraryLink"]).query)
 
-    SCHOOL_NAME = query_params.get('schoolName', [None])[0]
-    PROV_CODE = query_params.get('provCode', [None])[0]
-    NEIS_CODE = query_params.get('neisCode', [None])[0]
+    SCHOOL_NAME: Optional[str] = query_params.get('schoolName', [None])[0]
+    PROV_CODE: Optional[str] = query_params.get('provCode', [None])[0]
+    NEIS_CODE: Optional[str] = query_params.get('neisCode', [None])[0]
 
     if SCHOOL_NAME is None or PROV_CODE is None or NEIS_CODE is None:
         print("올바르지 않은 도서관 링크가 제공되었어요. 프로그램의 설명을 참고하여 올바른 링크를 입력해주세요.")
@@ -323,19 +352,19 @@ if __name__ == "__main__":
 
     print(f"@@@@@ 학교 정보를 로딩했어요: {SCHOOL_NAME} (교육청 코드: {PROV_CODE}, 나이스 코드: {NEIS_CODE})")
 
-    ALADIN_API_KEY = config["aladinKey"]
-    OUTPUT_XLSX_FILE = config["outputFileName"]
+    ALADIN_API_KEY: str = config["aladinKey"]
+    OUTPUT_XLSX_FILE: str = config["outputFileName"]
 
-    DEFAULT_FONT_SIZE_PT = 11
-    DESCRIPTION_WRAP_WIDTH = 25
+    DEFAULT_FONT_SIZE_PT: int = 11
+    DESCRIPTION_WRAP_WIDTH: int = 25
 
-    INPUT_XLSX_FILE = "list.xlsx"
+    INPUT_XLSX_FILE: str = "list.xlsx"
 
-    books_to_check = []
+    books_to_check: List[Book] = []
 
     if not os.path.exists(INPUT_XLSX_FILE):
-        workbook = openpyxl.Workbook()
-        sheet = workbook.active
+        workbook: openpyxl.Workbook = openpyxl.Workbook()
+        sheet: openpyxl.worksheet.worksheet.Worksheet = workbook.active
         sheet['A1'] = 'ISBN13'
         sheet['B1'] = '시트'
         sheet['C1'] = '메모 (선택)'
@@ -346,47 +375,31 @@ if __name__ == "__main__":
         sys.exit(1)
 
     try:
-        workbook = openpyxl.load_workbook(INPUT_XLSX_FILE, data_only=True)
-        sheet = workbook.active
+        workbook: openpyxl.Workbook = openpyxl.load_workbook(INPUT_XLSX_FILE, data_only=True)
+        sheet: openpyxl.worksheet.worksheet.Worksheet = workbook.active
 
-        for row in sheet.iter_rows(min_row=2, max_col=3):
-            isbn_cell = row[0]
-            sheet_cell = row[1] if len(row) > 1 else None
-            memo_cell = row[2] if len(row) > 2 else None
+        for row_idx, row in enumerate(sheet.iter_rows(min_row=2, max_col=3), start=1):
+            isbn_cell: openpyxl.cell.cell.Cell = row[0]
+            sheet_cell: Optional[openpyxl.cell.cell.Cell] = row[1] if len(row) > 1 else None
+            memo_cell: Optional[openpyxl.cell.cell.Cell] = row[2] if len(row) > 2 else None
 
             if isbn_cell.value:
-                isbn = str(isbn_cell.value).strip()
-                sheet_name = str(sheet_cell.value).strip() if sheet_cell and sheet_cell.value else ''
-                memo = str(memo_cell.value).strip() if memo_cell and memo_cell.value else ''
+                isbn: str = str(isbn_cell.value).strip()
+                sheet_name: str = str(sheet_cell.value).strip() if sheet_cell and sheet_cell.value else ''
+                memo: str = str(memo_cell.value).strip() if memo_cell and memo_cell.value else ''
 
                 if not sheet_name:
                     print(f"'{isbn}' 책이 시트가 지정되지 않았어요.")
                     sys.exit(1)
 
-                books_to_check.append((isbn, sheet_name, memo))
+                books_to_check.append(Book(isbn13=isbn, sheet_name=sheet_name, memo=memo, order=row_idx))
 
     except Exception as e:
         print(f"@@@@@ '{INPUT_XLSX_FILE}' 파일을 읽는 중 오류가 발생했어요: {e}")
         sys.exit(1)
 
-    session = requests.Session()
-    books = []
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures = [executor.submit(fetch, isbn, ALADIN_API_KEY, NEIS_CODE, PROV_CODE, session, 5, memo, sheet_name)
-                   for isbn, sheet_name, memo in books_to_check]
-        for (isbn, sheet_name, memo), future in zip(books_to_check, futures):
-            try:
-                result = future.result()
-                if result:
-                    books.append(result)
-            except Exception as exc:
-                print(f"ISBN {isbn} 처리 중 예외가 발생했어요: {exc}")
-
-    print(f"@@@@@ 총 {len(books)}권의 책 정보를 성공적으로 가져왔어요.")
-
-    if not books:
+    if not books_to_check:
         print("처리할 책 데이터가 없어요. 프로그램을 종료합니다.")
         sys.exit(1)
 
-    create(books, OUTPUT_XLSX_FILE, DEFAULT_FONT_SIZE_PT)
+    create(books_to_check, OUTPUT_XLSX_FILE, DEFAULT_FONT_SIZE_PT, ALADIN_API_KEY, NEIS_CODE, PROV_CODE)
