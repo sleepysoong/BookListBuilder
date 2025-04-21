@@ -356,6 +356,13 @@ def create(
                 buf.seek(0)
 
                 worksheet.insert_image(r, img_idx, f"{book.isbn13}.png", {'image_data': buf, 'x_offset': 0, 'y_offset': 0, 'positioning': 1})
+        
+        # 도서관 소장 도서는 노란색으로 행 강조
+        worksheet.conditional_format(1, 0, len(group_books), len(COLUMNS)-1, {
+            'type': 'formula',
+            'criteria': '=$L2="링크"',
+            'format': fm.get('highlight')
+        })
 
     workbook.close()
     print(f"@@@@@ 엑셀 파일({output})을 저장했어요.")
