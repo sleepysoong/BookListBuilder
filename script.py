@@ -57,6 +57,7 @@ class FormatManager:
             'center': workbook.add_format({**base_args, 'align': 'center', 'valign': 'vcenter'}),
             'left': workbook.add_format({**base_args, 'align': 'left', 'valign': 'vcenter'}),
             'price': workbook.add_format({**base_args, 'num_format': '#,##0"원"', 'align': 'center', 'valign': 'vcenter'}),
+            'hyperlink': workbook.add_format({**base_args, 'font_color': 'blue', 'underline': 1, 'align': 'center', 'valign': 'vcenter'}),
         }
 
     def get(self, key: str) -> Optional[xlsxwriter.format]:
@@ -211,7 +212,8 @@ def create(
         font_size_pt: int,
         aladin_api_key: Optional[str] = None,
         neis_code: Optional[str] = None,
-        prov_code: Optional[str] = None
+        prov_code: Optional[str] = None,
+        school_name: Optional[str] = None
     ) -> None:
     font: ImageFont.ImageFont = ImageFont.load_default()
     workbook: xlsxwriter.Workbook = xlsxwriter.Workbook(output, {'default_date_format': 'yyyy-mm-dd'})
@@ -297,7 +299,13 @@ def create(
 
                 val: Any = col.getter(book)
 
-                if col.fmt_key == 'price':
+                if idx == 10:
+                    if book.library_status == LibraryBookStatus.EXISTS and book.key and book.species_key:
+                        url = f"https://read365.edunet.net/PureScreen/SearchDetail?bookKey={book.key}&speciesKey={book.species_key}&provCode={prov_code}&neisCode={neis_code}&schoolName={school_name}&fromSchool=true"
+                        worksheet.write_url(r, idx, url, fm.get('hyperlink'), string='링크')
+                    else:
+                        worksheet.write(r, idx, val, fm.get(col.fmt_key or 'center'))
+                elif col.fmt_key == 'price':
                     worksheet.write_number(r, idx, val, fm.get('price'))
                 else:
                     worksheet.write(r, idx, val, fm.get(col.fmt_key or 'center'))
@@ -402,4 +410,4 @@ if __name__ == "__main__":
         print("처리할 책 데이터가 없어요. 프로그램을 종료합니다.")
         sys.exit(1)
 
-    create(books_to_check, OUTPUT_XLSX_FILE, DEFAULT_FONT_SIZE_PT, ALADIN_API_KEY, NEIS_CODE, PROV_CODE)
+    create(books_to_check, OUTPUT_XLSX_FILE, DEFAULT_FONT_SIZE_PT, ALADIN_API_KEY, NEIS_CODE, PROV_CODE, SCHOOL_NAME)
