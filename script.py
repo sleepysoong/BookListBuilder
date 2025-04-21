@@ -14,7 +14,7 @@ from enum import Enum, auto
 from urllib.parse import urlparse, parse_qs
 import yaml
 
-VERSION: str = "1.2.0"
+VERSION: str = "1.3.0"
 
 
 class LibraryBookStatus(Enum):
