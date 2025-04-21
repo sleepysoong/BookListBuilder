@@ -24,8 +24,12 @@ class LibraryBookStatus(Enum):
 
 @dataclass
 class Book:
+    item_id: Optional[int] = None # 알라딘 아이템 아이디
+    order: int = 0
+    key: Optional[int] = None # 도서관 도서 키
+    species_key: Optional[int] = None # 도서관 도서 종류 키
     title: str = ''
-    link: str = ''
+    cover: Optional[BytesIO] = None
     author: str = ''
     publisher: str = ''
     isbn13: str = ''
@@ -36,12 +40,8 @@ class Book:
     rating_count: int = 0
     category: str = ''
     sheet_name: str = ''
-    cover: Optional[BytesIO] = None
     library_status: LibraryBookStatus = LibraryBookStatus.UNKNOWN
     memo: str = ''
-    key: Optional[int] = None
-    species_key: Optional[int] = None
-    order: int = 0
 
 class Column:
     def __init__(self, header: str, getter: Callable[[Book], Any], fmt_key: Optional[str]):
@@ -146,7 +146,7 @@ def update_book_info(book: Book, aladin_api_key: str, session: requests.Session,
         count: int = int(rating_info.get("ratingCount", 0))
 
         book.title = item.get("title", "")
-        book.link = item.get("link", "")
+        book.item_id = item.get("itemId", "")
         book.author = item.get("author", "")
         book.publisher = item.get("publisher", "")
         book.isbn13 = item.get("isbn13", "")
@@ -303,6 +303,12 @@ def create(
                     if book.library_status == LibraryBookStatus.EXISTS and book.key and book.species_key:
                         url = f"https://read365.edunet.net/PureScreen/SearchDetail?bookKey={book.key}&speciesKey={book.species_key}&provCode={prov_code}&neisCode={neis_code}&schoolName={school_name}&fromSchool=true"
                         worksheet.write_url(r, idx, url, fm.get('hyperlink'), string='링크')
+                    else:
+                        worksheet.write(r, idx, val, fm.get(col.fmt_key or 'center'))
+                elif idx == 1:
+                    if book.item_id:
+                        url = f"https://www.aladin.co.kr/shop/wproduct.aspx?ItemId={book.item_id}"
+                        worksheet.write_url(r, idx, url, fm.get('hyperlink'), string=val)
                     else:
                         worksheet.write(r, idx, val, fm.get(col.fmt_key or 'center'))
                 elif col.fmt_key == 'price':
