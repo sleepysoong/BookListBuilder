@@ -303,7 +303,7 @@ def create(
 
                 val: Any = col.getter(book)
 
-                if idx == 10:
+                if idx == 11:
                     if book.library_status == LibraryBookStatus.EXISTS and book.key and book.species_key:
                         url = f"https://read365.edunet.net/PureScreen/SearchDetail?bookKey={book.key}&speciesKey={book.species_key}&provCode={prov_code}&neisCode={neis_code}&schoolName={school_name}&fromSchool=true"
                         worksheet.write_url(r, idx, url, fm.get('hyperlink'), string='링크')
