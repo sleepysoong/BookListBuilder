@@ -38,6 +38,7 @@ class Book:
     description: str = ''
     rating_score: float = 0.0
     rating_count: int = 0
+    sales_point: int = 0
     category: str = ''
     sheet_name: str = ''
     library_status: LibraryBookStatus = LibraryBookStatus.UNKNOWN
@@ -155,6 +156,7 @@ def update_book_info(book: Book, aladin_api_key: str, session: requests.Session,
         book.description = desc
         book.rating_score = score
         book.rating_count = count
+        book.sales_point = item.get("salesPoint", 0)
         book.category = item.get("categoryName", "")
 
         print(f"> [조회 성공][알라딘] ISBN {book.isbn13}: '{book.title}' 정보를 가져왔어요.")
