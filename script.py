@@ -59,6 +59,7 @@ class FormatManager:
             'left': workbook.add_format({**base_args, 'align': 'left', 'valign': 'vcenter'}),
             'price': workbook.add_format({**base_args, 'num_format': '#,##0"원"', 'align': 'center', 'valign': 'vcenter'}),
             'hyperlink': workbook.add_format({**base_args, 'font_color': 'blue', 'underline': 1, 'align': 'center', 'valign': 'vcenter'}),
+            'sales_point': workbook.add_format({**base_args, 'num_format': '#,##0', 'align': 'center', 'valign': 'vcenter'}),
         }
 
     def get(self, key: str) -> Optional[xlsxwriter.format]:
@@ -74,6 +75,7 @@ COLUMNS: List[Column] = [
     Column('출판일', lambda b: b.publish_date, 'center'),
     Column('설명', lambda b: b.description, 'left'),
     Column('평점', lambda b: f'{b.rating_score:.1f} {"★"*round(b.rating_score/2)+"☆"*(5-round(b.rating_score/2))} ({b.rating_count})', 'center'),
+    Column('판매 지수', lambda b: b.sales_point, 'sales_point'),
     Column('카테고리', lambda b: b.category, 'left'),
     Column('교내 도서관 소장', lambda b: 'O' if b.library_status == LibraryBookStatus.EXISTS else ('X' if b.library_status == LibraryBookStatus.NOT_EXISTS else '?'), 'center'),
     Column('메모', lambda b: b.memo, 'left'),
@@ -315,6 +317,8 @@ def create(
                         worksheet.write(r, idx, val, fm.get(col.fmt_key or 'center'))
                 elif col.fmt_key == 'price':
                     worksheet.write_number(r, idx, val, fm.get('price'))
+                elif col.fmt_key == 'sales_point':
+                    worksheet.write_number(r, idx, val, fm.get('sales_point'))
                 else:
                     worksheet.write(r, idx, val, fm.get(col.fmt_key or 'center'))
 
