@@ -14,8 +14,7 @@ ENV/
 .vscode/
 .DS_Store
 
-output.xlsx
-list.xlsx
+*.xlsx
 
 config.yml
 

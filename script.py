@@ -61,6 +61,8 @@ class FormatManager:
             'hyperlink': workbook.add_format({**base_args, 'font_color': 'blue', 'underline': 1, 'align': 'center', 'valign': 'vcenter'}),
             'sales_point': workbook.add_format({**base_args, 'num_format': '#,##0', 'align': 'center', 'valign': 'vcenter'}),
         }
+        # 도서관 소장 도서 행 강조용 노란색 배경 포맷 추가
+        self.fmts['highlight'] = workbook.add_format({**base_args, 'bg_color': '#FFFF00'})
 
     def get(self, key: str) -> Optional[xlsxwriter.format]:
         return self.fmts.get(key)
@@ -129,7 +131,20 @@ def update_library_status(book: Book, neis_code: str, prov_code: str, session: r
         return
 
 def update_book_info(book: Book, aladin_api_key: str, session: requests.Session, timeout: int = 5) -> None:
-    url: str = "http://www.aladin.co.kr/ttb/api/ItemLookUp.aspx?ttbkey={api_key}&itemIdType=ISBN&ItemId={isbn}&output=js&Version=20131101&OptResult=Story,categoryIdList,bestSellerRank,ratingInfo,reviewList".format(api_key=aladin_api_key, isbn=book.isbn13)
+    if book.item_id:
+        url = (
+            f"http://www.aladin.co.kr/ttb/api/ItemLookUp.aspx"
+            f"?ttbkey={aladin_api_key}&itemIdType=ItemId&ItemId={book.item_id}"
+            "&output=js&Version=20131101&OptResult=Story,categoryIdList,"
+            "bestSellerRank,ratingInfo,reviewList"
+        )
+    else:
+        url = (
+            f"http://www.aladin.co.kr/ttb/api/ItemLookUp.aspx"
+            f"?ttbkey={aladin_api_key}&itemIdType=ISBN&ItemId={book.isbn13}"
+            "&output=js&Version=20131101&OptResult=Story,categoryIdList,"
+            "bestSellerRank,ratingInfo,reviewList"
+        )
 
     try:
         resp: requests.Response = session.get(url, timeout=timeout)
@@ -228,10 +243,15 @@ def create(
         futures: List[concurrent.futures.Future] = []
 
         for book in books:
-            futures.extend([
-                executor.submit(update_book_info, book, aladin_api_key, session),
-                executor.submit(update_library_status, book, neis_code, prov_code, session)
-            ])
+            if book.item_id is not None and book.isbn13 == "":
+                # 알라딘 정보 조회 후 도서관 상태 조회
+                info_future = executor.submit(update_book_info, book, aladin_api_key, session)
+                concurrent.futures.wait([info_future])
+                futures.append(executor.submit(update_library_status, book, neis_code, prov_code, session))
+            else:
+                # 알라딘과 도서관 동시에 조회
+                futures.append(executor.submit(update_book_info, book, aladin_api_key, session))
+                futures.append(executor.submit(update_library_status, book, neis_code, prov_code, session))
 
         concurrent.futures.wait(futures)
 
@@ -404,15 +424,30 @@ if __name__ == "__main__":
             memo_cell: Optional[openpyxl.cell.cell.Cell] = row[2] if len(row) > 2 else None
 
             if isbn_cell.value:
-                isbn: str = str(isbn_cell.value).strip()
-                sheet_name: str = str(sheet_cell.value).strip() if sheet_cell and sheet_cell.value else ''
-                memo: str = str(memo_cell.value).strip() if memo_cell and memo_cell.value else ''
+                raw = str(isbn_cell.value).strip()
+                sheet_name = str(sheet_cell.value).strip() if sheet_cell and sheet_cell.value else ''
+                memo = str(memo_cell.value).strip() if memo_cell and memo_cell.value else ''
 
                 if not sheet_name:
-                    print(f"'{isbn}' 책이 시트가 지정되지 않았어요.")
+                    print(f"'{raw}' 책이 시트가 지정되지 않았어요.")
                     sys.exit(1)
 
-                books_to_check.append(Book(isbn13=isbn, sheet_name=sheet_name, memo=memo, order=row_idx))
+                if raw.startswith("http"):
+                    parsed = urlparse(raw)
+                    query = parse_qs(parsed.query)
+                    id_list = query.get("ItemId") or query.get("itemId")
+                    if not id_list or not id_list[0].isdigit():
+                        print(f"'{raw}' 에서 ItemId를 추출할 수 없어요.")
+                        sys.exit(1)
+                    item_id = int(id_list[0])
+                    book_isbn = ""
+                else:
+                    item_id = None
+                    book_isbn = raw
+
+                books_to_check.append(
+                    Book(item_id=item_id, isbn13=book_isbn, sheet_name=sheet_name, memo=memo, order=row_idx)
+                )
 
     except Exception as e:
         print(f"@@@@@ '{INPUT_XLSX_FILE}' 파일을 읽는 중 오류가 발생했어요: {e}")
