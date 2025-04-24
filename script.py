@@ -477,3 +477,4 @@ if __name__ == "__main__":
         sys.exit(1)
 
     create(books_to_check, OUTPUT_XLSX_FILE, DEFAULT_FONT_SIZE_PT, ALADIN_API_KEY, NEIS_CODE, PROV_CODE, SCHOOL_NAME)
+    input("모든 작업이 완료되었어요. 아무 키나 눌러 프로그램을 종료하세요.")

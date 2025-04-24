@@ -1,10 +1,13 @@
 name: Build & Release with PyInstaller
+
 on:
   push:
     tags:
       - 'v*.*.*'
+
 permissions:
   contents: write
+
 env:
   SCRIPT_NAME: script.py
   BASE_NAME: script
@@ -14,22 +17,35 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
       - uses: actions/cache@v3
         with:
           path: ~/.cache/pip
-          key: windows-pip-${{ hashFiles('**/requirements.txt') }}
-      - run: |
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          set -x
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
-      - run: pyinstaller --onefile --log-level DEBUG --name "${{ env.BASE_NAME }}-${{ github.ref_name }}-windows" ${{ env.SCRIPT_NAME }}
-      - uses: softprops/action-gh-release@v2
+
+      - name: Build Windows EXE
+        run: |
+          set -x
+          pyinstaller --onefile --log-level DEBUG --name "${{ env.BASE_NAME }}-${{ github.ref_name }}-windows" ${{ env.SCRIPT_NAME }}
+
+      - name: Release & upload Windows EXE
+        uses: softprops/action-gh-release@v2
         if: github.ref_type == 'tag'
         with:
           tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           files: dist/${{ env.BASE_NAME }}-${{ github.ref_name }}-windows.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -39,22 +55,42 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
       - uses: actions/cache@v3
         with:
           path: ~/.cache/pip
-          key: macos-pip-${{ hashFiles('**/requirements.txt') }}
-      - run: |
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          set -x
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
-      - run: pyinstaller --windowed --log-level DEBUG --name "${{ env.BASE_NAME }}-${{ github.ref_name }}-macos" ${{ env.SCRIPT_NAME }}
-      - uses: softprops/action-gh-release@v2
+
+      - name: Build mac .app bundle
+        run: |
+          set -x
+          pyinstaller --windowed --log-level DEBUG --name "${{ env.BASE_NAME }}-${{ github.ref_name }}-mac" ${{ env.SCRIPT_NAME }}
+
+      - name: Zip the .app bundle
+        run: |
+          set -x
+          ditto -c -k --sequesterRsrc --keepParent \
+            "dist/${{ env.BASE_NAME }}-${{ github.ref_name }}-mac.app" \
+            "dist/${{ env.BASE_NAME }}-${{ github.ref_name }}-mac.zip"
+
+      - name: Release & upload mac ZIP
+        uses: softprops/action-gh-release@v2
         if: github.ref_type == 'tag'
         with:
           tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
-          files: dist/${{ env.BASE_NAME }}-${{ github.ref_name }}-macos.app
+          name: ${{ github.ref_name }}
+          files: dist/${{ env.BASE_NAME }}-${{ github.ref_name }}-mac.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
