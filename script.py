@@ -15,7 +15,7 @@ from urllib.parse import urlparse, parse_qs
 import yaml
 from datetime import datetime
 
-VERSION: str = "1.4.0"
+VERSION: str = "1.4.1"
 
 
 class LibraryBookStatus(Enum):
