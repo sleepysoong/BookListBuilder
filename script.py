@@ -14,6 +14,7 @@ from enum import Enum, auto
 from urllib.parse import urlparse, parse_qs
 import yaml
 from datetime import datetime
+from xlsxwriter.format import Format
 
 VERSION: str = "1.4.1"
 
@@ -54,7 +55,7 @@ class Column:
 class FormatManager:
     def __init__(self, workbook: xlsxwriter.Workbook, font_size_pt: int):
         base_args: Dict[str, Any] = {'font_size': font_size_pt, 'text_wrap': True}
-        self.fmts: Dict[str, xlsxwriter.format] = {
+        self.fmts: Dict[str, Format] = {
             'header': workbook.add_format({**base_args, 'bold': True, 'bg_color': '#D3D3D3', 'align': 'center', 'valign': 'vcenter'}),
             'center': workbook.add_format({**base_args, 'align': 'center', 'valign': 'vcenter'}),
             'left': workbook.add_format({**base_args, 'align': 'left', 'valign': 'vcenter'}),
@@ -67,7 +68,7 @@ class FormatManager:
         # 5년 이전 도서 연두색 배경 포맷 추가
         self.fmts['oldbook'] = workbook.add_format({**base_args, 'bg_color': '#CCFFCC'})
 
-    def get(self, key: str) -> Optional[xlsxwriter.format]:
+    def get(self, key: str) -> Optional[Format]:
         return self.fmts.get(key)
     
 COLUMNS: List[Column] = [
