@@ -389,6 +389,7 @@ if __name__ == "__main__":
             }, f, allow_unicode=True)
 
         print(f"config.yml 파일이 존재하지 않아 기본 템플릿을 생성했어요. 값을 채워넣고 다시 실행해주세요.")
+        input("( ･∀･)ﾉｼ 엔터키를 눌러 프로그램을 종료하세요.")
         sys.exit(1)
 
     with open("config.yml", encoding="utf-8") as f:
@@ -397,6 +398,7 @@ if __name__ == "__main__":
         for k in required_keys:
             if k not in config or not config[k]:
                 print(f"콘피그 파일에 '{k}' 값이 비어 있어요.")
+                input("( ･∀･)ﾉｼ 엔터키를 눌러 프로그램을 종료하세요.")
                 sys.exit(1)
 
     query_params: Dict[str, List[str]] = parse_qs(urlparse(config["libraryLink"]).query)
@@ -407,6 +409,7 @@ if __name__ == "__main__":
 
     if SCHOOL_NAME is None or PROV_CODE is None or NEIS_CODE is None:
         print("올바르지 않은 도서관 링크가 제공되었어요. 프로그램의 설명을 참고하여 올바른 링크를 입력해주세요.")
+        input("( ･∀･)ﾉｼ 엔터키를 눌러 프로그램을 종료하세요.")
         sys.exit(1)
 
     print(f"@@@@@ 학교 정보를 로딩했어요: {SCHOOL_NAME} (교육청 코드: {PROV_CODE}, 나이스 코드: {NEIS_CODE})")
@@ -431,6 +434,7 @@ if __name__ == "__main__":
         workbook.save(INPUT_XLSX_FILE)
 
         print(f"'{INPUT_XLSX_FILE}' 파일이 존재하지 않아 생성했어요. A열에 ISBN13, B열에 시트, C열에 메모를 입력해주세요.")
+        input("( ･∀･)ﾉｼ 엔터키를 눌러 프로그램을 종료하세요.")
         sys.exit(1)
 
     try:
@@ -449,6 +453,7 @@ if __name__ == "__main__":
 
                 if not sheet_name:
                     print(f"'{raw}' 책이 시트가 지정되지 않았어요.")
+                    input("( ･∀･)ﾉｼ 엔터키를 눌러 프로그램을 종료하세요.")
                     sys.exit(1)
 
                 if raw.startswith("http"):
@@ -457,6 +462,7 @@ if __name__ == "__main__":
                     id_list = query.get("ItemId") or query.get("itemId")
                     if not id_list or not id_list[0].isdigit():
                         print(f"'{raw}' 에서 ItemId를 추출할 수 없어요.")
+                        input("( ･∀･)ﾉｼ 엔터키를 눌러 프로그램을 종료하세요.")
                         sys.exit(1)
                     item_id = int(id_list[0])
                     book_isbn = ""
@@ -470,11 +476,13 @@ if __name__ == "__main__":
 
     except Exception as e:
         print(f"@@@@@ '{INPUT_XLSX_FILE}' 파일을 읽는 중 오류가 발생했어요: {e}")
+        input("( ･∀･)ﾉｼ 엔터키를 눌러 프로그램을 종료하세요.")
         sys.exit(1)
 
     if not books_to_check:
         print("처리할 책 데이터가 없어요. 프로그램을 종료합니다.")
+        input("( ･∀･)ﾉｼ 엔터키를 눌러 프로그램을 종료하세요.")
         sys.exit(1)
 
     create(books_to_check, OUTPUT_XLSX_FILE, DEFAULT_FONT_SIZE_PT, ALADIN_API_KEY, NEIS_CODE, PROV_CODE, SCHOOL_NAME)
-    input("모든 작업이 완료되었어요. 아무 키나 눌러 프로그램을 종료하세요.")
+    input("( ･∀･)ﾉｼ 엔터키를 눌러 프로그램을 종료하세요.")
