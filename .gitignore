@@ -23,3 +23,9 @@ config.yml
 *.bak
 ~$* 
 fuck*.py
+
+*.spec
+
+build/
+
+dist/
