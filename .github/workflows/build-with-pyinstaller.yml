@@ -1,10 +1,10 @@
 name: Build & Release with PyInstaller
-
 on:
   push:
     tags:
       - 'v*.*.*'
-
+permissions:
+  contents: write
 env:
   SCRIPT_NAME: script.py
   BASE_NAME: script
@@ -12,26 +12,20 @@ env:
 jobs:
   build-windows:
     runs-on: windows-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-
-      - name: Install dependencies
-        run: |
+      - uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: windows-pip-${{ hashFiles('**/requirements.txt') }}
+      - run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
-
-      - name: Build Windows EXE
-        run: pyinstaller --onefile --log-level DEBUG ${{ env.SCRIPT_NAME }}
-
-      - name: Release & upload Windows asset
-        uses: softprops/action-gh-release@v2
+      - run: pyinstaller --onefile --log-level DEBUG --name "${{ env.BASE_NAME }}-${{ github.ref_name }}-windows" ${{ env.SCRIPT_NAME }}
+      - uses: softprops/action-gh-release@v2
         if: github.ref_type == 'tag'
         with:
           tag_name: ${{ github.ref_name }}
@@ -43,30 +37,24 @@ jobs:
   build-mac:
     needs: build-windows
     runs-on: macos-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-
-      - name: Install dependencies
-        run: |
+      - uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: macos-pip-${{ hashFiles('**/requirements.txt') }}
+      - run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
-
-      - name: Build macOS .app bundle
-        run: pyinstaller --onefile --windowed --log-level DEBUG ${{ env.SCRIPT_NAME }}
-
-      - name: Release & upload macOS asset
-        uses: softprops/action-gh-release@v2
+      - run: pyinstaller --windowed --log-level DEBUG --name "${{ env.BASE_NAME }}-${{ github.ref_name }}-macos" ${{ env.SCRIPT_NAME }}
+      - uses: softprops/action-gh-release@v2
         if: github.ref_type == 'tag'
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
-          files: dist/${{ env.BASE_NAME }}-${{ github.ref_name }}-mac.app
+          files: dist/${{ env.BASE_NAME }}-${{ github.ref_name }}-macos.app
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
