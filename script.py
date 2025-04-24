@@ -16,7 +16,7 @@ import yaml
 from datetime import datetime
 from xlsxwriter.format import Format
 
-VERSION: str = "1.4.2"
+VERSION: str = "1.4.3"
 
 
 class LibraryBookStatus(Enum):
