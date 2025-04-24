@@ -1,21 +1,37 @@
-name: Build with PyInstaller
+name: Build & Release with PyInstaller
 
 on:
   push:
     tags:
-      - '*'
+      - 'v*.*.*'
+
+env:
+  SCRIPT_NAME: script.py
+  BASE_NAME: script
 
 jobs:
+
   build-windows:
     runs-on: windows-latest
+    env:
+      WINDOWS_ASSET: ${{ env.BASE_NAME }}-${{ github.ref_name }}-windows.exe
+
     steps:
-      - name: Checkout source code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
+      - name: Cache pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: windows-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            windows-pip-
 
       - name: Install dependencies
         run: |
@@ -23,26 +39,41 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build with PyInstaller
-        run: |
-          pyinstaller --onefile script.py
+      - name: Build Windows EXE
+        run: pyinstaller --onefile --log-level DEBUG ${{ env.SCRIPT_NAME }}
 
-      - name: Upload EXE as artifact
-        uses: actions/upload-artifact@v4
+      - name: "Release: create/update & upload Windows asset"
+        uses: softprops/action-gh-release@v2
+        if: github.ref_type == 'tag'
         with:
-          name: windows-exe
-          path: dist/*.exe
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          files: dist/${{ env.WINDOWS_ASSET }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-mac:
+    needs: build-windows
     runs-on: macos-latest
+    env:
+      MACOS_ASSET: ${{ env.BASE_NAME }}-${{ github.ref_name }}-macos.app
+
     steps:
-      - name: Checkout source code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
+      - name: Cache pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: macos-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            macos-pip-
 
       - name: Install dependencies
         run: |
@@ -50,12 +81,15 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build with PyInstaller
-        run: |
-          pyinstaller --onefile script.py
+      - name: Build macOS .app bundle
+        run: pyinstaller --onefile --windowed --log-level DEBUG ${{ env.SCRIPT_NAME }}
 
-      - name: Upload Mac binary as artifact
-        uses: actions/upload-artifact@v4
+      - name: "Release: upload macOS asset"
+        uses: softprops/action-gh-release@v2
+        if: github.ref_type == 'tag'
         with:
-          name: macos-binary
-          path: dist/*
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          files: dist/${{ env.MACOS_ASSET }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
