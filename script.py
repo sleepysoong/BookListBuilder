@@ -13,6 +13,7 @@ from typing import Optional, List, Tuple, Dict, Any, Callable
 from enum import Enum, auto
 from urllib.parse import urlparse, parse_qs
 import yaml
+from datetime import datetime
 
 VERSION: str = "1.4.0"
 
@@ -63,6 +64,8 @@ class FormatManager:
         }
         # 도서관 소장 도서 행 강조용 노란색 배경 포맷 추가
         self.fmts['highlight'] = workbook.add_format({**base_args, 'bg_color': '#FFFF00'})
+        # 5년 이전 도서 연두색 배경 포맷 추가
+        self.fmts['oldbook'] = workbook.add_format({**base_args, 'bg_color': '#CCFFCC'})
 
     def get(self, key: str) -> Optional[xlsxwriter.format]:
         return self.fmts.get(key)
@@ -362,6 +365,14 @@ def create(
             'type': 'formula',
             'criteria': '=$L2="링크"',
             'format': fm.get('highlight')
+        })
+
+        # 5년 이전 출판 도서는 연두색으로 행 강조
+        current_year = datetime.now().year
+        worksheet.conditional_format(1, 0, len(group_books), len(COLUMNS)-1, {
+            'type': 'formula',
+            'criteria': f'=AND(ISNUMBER(VALUE(LEFT($G2,4))), VALUE(LEFT($G2,4))<>{current_year}, VALUE(LEFT($G2,4))<{current_year - 4})',
+            'format': fm.get('oldbook')
         })
 
     workbook.close()
