@@ -408,6 +408,21 @@ def create(
     workbook.close()
     print(f"@@@@@ 엑셀 파일({output})을 저장했어요.")
 
+def get_unique_filename(base_path: str) -> str:
+    if not os.path.exists(base_path):
+        return base_path
+    
+    base, ext = os.path.splitext(base_path)
+    i = 1
+
+    while True:
+        new_path = f"{base}({i}){ext}"
+        
+        if not os.path.exists(new_path):
+            return new_path
+        
+        i += 1
+
 if __name__ == "__main__":
     if not os.path.exists("config.yml"):
         with open("config.yml", "w", encoding="utf-8") as f:
@@ -444,7 +459,7 @@ if __name__ == "__main__":
     print(f"@@@@@ 학교 정보를 로딩했어요: {SCHOOL_NAME} (교육청 코드: {PROV_CODE}, 나이스 코드: {NEIS_CODE})")
 
     ALADIN_API_KEY: str = config["aladinKey"]
-    OUTPUT_XLSX_FILE: str = config["outputFileName"]
+    OUTPUT_XLSX_FILE: str = get_unique_filename(config["outputFileName"])
 
     DEFAULT_FONT_SIZE_PT: int = 11
     DESCRIPTION_WRAP_WIDTH: int = 25
