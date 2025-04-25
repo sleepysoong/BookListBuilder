@@ -44,6 +44,7 @@ class Book:
     category: str = ''
     sheet_name: str = ''
     library_status: LibraryBookStatus = LibraryBookStatus.UNKNOWN
+    best_seller_Rank: str = ''
     memo: str = ''
 
 class Column:
@@ -84,7 +85,7 @@ COLUMNS: List[Column] = [
     Column('판매 지수', lambda b: b.sales_point, 'sales_point'),
     Column('카테고리', lambda b: b.category, 'left'),
     Column('교내 도서관 소장', lambda b: 'O' if b.library_status == LibraryBookStatus.EXISTS else ('X' if b.library_status == LibraryBookStatus.NOT_EXISTS else '?'), 'center'),
-    Column('메모', lambda b: b.memo, 'left'),
+    Column('메모', lambda b: b.memo + ("" if b.best_seller_rank == "" else f"\n\n* {b.best_seller_rank}"), 'left'),
 ]
 
 def update_library_status(book: Book, neis_code: str, prov_code: str, session: requests.Session, timeout: int = 10) -> None:
@@ -179,6 +180,7 @@ def update_book_info(book: Book, aladin_api_key: str, session: requests.Session,
         book.rating_count = count
         book.sales_point = item.get("salesPoint", 0)
         book.category = item.get("categoryName", "")
+        book.best_seller_Rank = item.get("subInfo", {}).get("bestSellerRank", "")
 
         print(f"> [조회 성공][알라딘] ISBN {book.isbn13}: '{book.title}' 정보를 가져왔어요.")
 
