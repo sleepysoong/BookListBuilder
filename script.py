@@ -44,7 +44,7 @@ class Book:
     category: str = ''
     sheet_name: str = ''
     library_status: LibraryBookStatus = LibraryBookStatus.UNKNOWN
-    best_seller_Rank: str = ''
+    best_seller_rank: str = ''
     memo: str = ''
 
 class Column:
@@ -68,6 +68,8 @@ class FormatManager:
         self.fmts['highlight'] = workbook.add_format({**base_args, 'bg_color': '#FFFF00'})
         # 5년 이전 도서 연두색 배경 포맷 추가
         self.fmts['oldbook'] = workbook.add_format({**base_args, 'bg_color': '#CCFFCC'})
+        # 알라딘 랭크 빨간색+굵기 포맷 추가
+        self.fmts['redbold'] = workbook.add_format({**base_args, 'font_color': 'red', 'bold': True})
 
     def get(self, key: str) -> Optional[Format]:
         return self.fmts.get(key)
@@ -85,7 +87,7 @@ COLUMNS: List[Column] = [
     Column('판매 지수', lambda b: b.sales_point, 'sales_point'),
     Column('카테고리', lambda b: b.category, 'left'),
     Column('교내 도서관 소장', lambda b: 'O' if b.library_status == LibraryBookStatus.EXISTS else ('X' if b.library_status == LibraryBookStatus.NOT_EXISTS else '?'), 'center'),
-    Column('메모', lambda b: b.memo + ("" if b.best_seller_rank == "" else f"\n\n* {b.best_seller_rank}"), 'left'),
+    Column('메모', lambda b: b.memo + ("" if b.best_seller_rank == "" else f"\n\n@@ 알라딘 {b.best_seller_rank}"), 'left'),
 ]
 
 def update_library_status(book: Book, neis_code: str, prov_code: str, session: requests.Session, timeout: int = 10) -> None:
@@ -180,7 +182,7 @@ def update_book_info(book: Book, aladin_api_key: str, session: requests.Session,
         book.rating_count = count
         book.sales_point = item.get("salesPoint", 0)
         book.category = item.get("categoryName", "")
-        book.best_seller_Rank = item.get("subInfo", {}).get("bestSellerRank", "")
+        book.best_seller_rank = item.get("subInfo", {}).get("bestSellerRank", "")
 
         print(f"> [조회 성공][알라딘] ISBN {book.isbn13}: '{book.title}' 정보를 가져왔어요.")
 
@@ -345,6 +347,15 @@ def create(
                     worksheet.write_number(r, idx, val, fm.get('price'))
                 elif col.fmt_key == 'sales_point':
                     worksheet.write_number(r, idx, val, fm.get('sales_point'))
+                elif idx == 12:
+                    if book.best_seller_rank:
+                        worksheet.write_rich_string(r, idx,
+                            book.memo,
+                            fm.get('redbold'), f"\n\n@@ 알라딘 {book.best_seller_rank}",
+                            fm.get('left')
+                        )
+                    else:
+                        worksheet.write(r, idx, book.memo, fm.get('left'))
                 else:
                     worksheet.write(r, idx, val, fm.get(col.fmt_key or 'center'))
 
