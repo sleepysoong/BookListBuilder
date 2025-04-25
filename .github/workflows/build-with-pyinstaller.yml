@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           set -x
-          pyinstaller --onefile --log-level DEBUG --name "${{ env.BASE_NAME }}-${{ github.ref_name }}-windows" ${{ env.SCRIPT_NAME }}
+          pyinstaller --onefile --log-level DEBUG --name "${{ env.BASE_NAME }}-${{ github.ref_name }}-windows" --icon="booklistbuilder.ico" ${{ env.SCRIPT_NAME }}
       - name: Release & upload Windows EXE
         uses: softprops/action-gh-release@v2
         if: github.ref_type == 'tag'
@@ -53,23 +53,17 @@ jobs:
           set -x
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
-      - name: Build mac single-file binary
+      - name: Build mac Mach-O executable
         shell: bash
         run: |
           set -x
           pyinstaller --onefile --log-level DEBUG --name "${{ env.BASE_NAME }}-${{ github.ref_name }}-mac" ${{ env.SCRIPT_NAME }}
-      - name: Rename to .command
-        shell: bash
-        run: |
-          set -x
-          mv "dist/${{ env.BASE_NAME }}-${{ github.ref_name }}-mac" "dist/${{ env.BASE_NAME }}-${{ github.ref_name }}.command"
-          chmod +x "dist/${{ env.BASE_NAME }}-${{ github.ref_name }}.command"
-      - name: Release & upload mac COMMAND
+      - name: Release & upload mac Mach-O
         uses: softprops/action-gh-release@v2
         if: github.ref_type == 'tag'
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
-          files: dist/${{ env.BASE_NAME }}-${{ github.ref_name }}.command
+          files: dist/${{ env.BASE_NAME }}-${{ github.ref_name }}-mac
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
