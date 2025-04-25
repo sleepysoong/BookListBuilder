@@ -64,10 +64,13 @@ class FormatManager:
             'hyperlink': workbook.add_format({**base_args, 'font_color': 'blue', 'underline': 1, 'align': 'center', 'valign': 'vcenter'}),
             'sales_point': workbook.add_format({**base_args, 'num_format': '#,##0', 'align': 'center', 'valign': 'vcenter'}),
         }
+        
         # 도서관 소장 도서 행 강조용 노란색 배경 포맷 추가
         self.fmts['highlight'] = workbook.add_format({**base_args, 'bg_color': '#FFFF00'})
+        
         # 5년 이전 도서 연두색 배경 포맷 추가
         self.fmts['oldbook'] = workbook.add_format({**base_args, 'bg_color': '#CCFFCC'})
+        
         # 알라딘 랭크 빨간색+굵기 포맷 추가
         self.fmts['redbold'] = workbook.add_format({**base_args, 'font_color': 'red', 'bold': True})
 
@@ -87,7 +90,16 @@ COLUMNS: List[Column] = [
     Column('판매 지수', lambda b: b.sales_point, 'sales_point'),
     Column('카테고리', lambda b: b.category, 'left'),
     Column('교내 도서관 소장', lambda b: 'O' if b.library_status == LibraryBookStatus.EXISTS else ('X' if b.library_status == LibraryBookStatus.NOT_EXISTS else '?'), 'center'),
-    Column('메모', lambda b: b.memo + ("" if b.best_seller_rank == "" else f"\n\n@@ 알라딘 {b.best_seller_rank}"), 'left'),
+    Column('메모', lambda b: (
+        b.memo
+        + ("" if b.best_seller_rank == "" else f"\n\n※ 알라딘 {b.best_seller_rank}")
+        + (
+            ""
+            if not b.publish_date or not b.publish_date[:4].isdigit()
+            or int(b.publish_date[:4]) >= datetime.now().year - 4
+            else "\n\n※ 발간 날짜 확인 필요"
+        )
+    ), 'left'),
 ]
 
 def update_library_status(book: Book, neis_code: str, prov_code: str, session: requests.Session, timeout: int = 10) -> None:
@@ -348,12 +360,16 @@ def create(
                 elif col.fmt_key == 'sales_point':
                     worksheet.write_number(r, idx, val, fm.get('sales_point'))
                 elif idx == 12:
-                    if book.best_seller_rank:
-                        worksheet.write_rich_string(r, idx,
-                            book.memo,
-                            fm.get('redbold'), f"\n\n@@ 알라딘 {book.best_seller_rank}",
-                            fm.get('left')
-                        )
+                    best_seller_text = f"\n\n※ 알라딘 {book.best_seller_rank}" if book.best_seller_rank else ""
+                    oldbook_text = "\n\n※ 발간 날짜 확인 필요" if (book.publish_date and book.publish_date[:4].isdigit() and int(book.publish_date[:4]) < datetime.now().year - 4) else ""
+                    if best_seller_text or oldbook_text:
+                        rich_args = [book.memo]
+                        if best_seller_text:
+                            rich_args += [fm.get('redbold'), best_seller_text]
+                        if oldbook_text:
+                            rich_args += [fm.get('redbold'), oldbook_text]
+                        rich_args += [fm.get('left')]
+                        worksheet.write_rich_string(r, idx, *rich_args)
                     else:
                         worksheet.write(r, idx, book.memo, fm.get('left'))
                 else:
