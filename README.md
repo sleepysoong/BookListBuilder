@@ -1,3 +1,5 @@
+![배너](./images/banner.png)
+
 # 🫠 BookListBuilder
 
 책 정보를 일일이 찾아보고 교내 도서관에 이미 있는 책인지 매번 확인하고 엑셀에 하나 하나 정리하는 작업 매우 번거롭지 않나요? `BookLinkBuilder`를 활용하여 각종 책의 정보과 교내 도서관 소장 여부를 보기 쉽게 엑셀 파일로 정리해보세요.
@@ -7,6 +9,12 @@
 - 정리해주는 정보: `책 표지 이미지`, `도서 제목`, `저자`, `출판사`, `ISBN`, `판매가 (정가)`, `출판일`, `도서 설명`, `도서 평점 (알라딘)`, `세일즈 포인트 (판매 지수)`, `도서 카테고리`, `교내 도서관 소장 여부`
 
 ![예시 사진](./images/output.png)
+
+## 🌐`BookListBuilder` 홈페이지를 오픈했어요!
+
+홈페이지에서 쉽게 목록을 생성할 수 있어요. 지금 바로 [접속](https://booklistbuilder.vercel.app/) 해보세요!
+
+![메인 페이지](./images/homepage.png)
 
 
 ## ⚙️ 설정 파일 세팅하기
@@ -66,4 +74,34 @@ pip install -r requirements.txt
 4. 아래 명령어를 실행하여 스크립트를 실행하세요.
 ```bash
 python script.py
+```
+
+## 😢 파이썬이 준비되지 않은 환경에서 실행하고 싶어요
+
+- 릴리즈 페이지: https://github.com/sleepysoong/BookListBuilder/releases
+
+릴리즈 페이지에서 빌드 결과물을 다운로드하여 `Windows` 혹은 `macOS`에서 파이썬 환경 없이 `BookListBuilder`를 실행할 수 있어요.
+
+
+### 💿 `Windows` 환경에서 실행하기
+
+`.exe` 파일을 다운로드 받고 더블 클릭하여 실행하시면 됩니다. 백신 프로그램 등이 실행을 막을 수 있으니 백신을 종료한 후 실행해주세요.
+
+### 💿 `macOS` 환경에서 실행하기
+
+1. 터미널을 열고 `booklistbuilder-vx.x.x-mac`이 있는 경로로 이동해주세요.
+
+2. 아래 명령어를 실행하여 권한을 부여하세요. (최초 1회만)
+```
+chmod +x <booklistbuilder-vx.x.x-mac>
+```
+
+3. 아래 명령어를 실행하여 `인터넷에서 다운로드된` 속성을 지우고 `Gatekeeper 경고`를 우회해주세요. (최초 1회만)
+```bash
+xattr -d com.apple.quarantine <booklistbuilder-vx.x.x-mac>
+```
+
+4. 아래 명령어를 실행하여 스크립트를 실행하세요.
+```bash
+./<booklistbuilder-vx.x.x-mac>
 ```
