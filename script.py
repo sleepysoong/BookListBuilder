@@ -16,7 +16,7 @@ import yaml
 from datetime import datetime
 from xlsxwriter.format import Format
 
-VERSION: str = "1.5.2"
+VERSION: str = "1.5.3"
 
 
 class LibraryBookStatus(Enum):
@@ -417,7 +417,7 @@ def get_unique_filename(base_path: str) -> str:
 
     while True:
         new_path = f"{base}({i}){ext}"
-        
+
         if not os.path.exists(new_path):
             return new_path
         
